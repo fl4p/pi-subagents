@@ -1,4 +1,4 @@
 {
   "asyncByDefault": true,
-  "waitTool": { "enabled": false }
+  "waitTool": { "enabled": true }
 }
