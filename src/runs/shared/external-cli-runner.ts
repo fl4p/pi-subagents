@@ -16,7 +16,10 @@ import {
 const MAX_OUTPUT_TAIL_BYTES = 64 * 1024;
 const MAX_ERROR_TAIL_BYTES = 64 * 1024;
 const MAX_RAW_LOG_BYTES = 8 * 1024 * 1024;
-const MAX_PARSER_LINE_BYTES = 256 * 1024;
+// Raised from 256 KiB: an external CLI agent can legitimately emit one very long JSON line (e.g. a
+// single command_execution event carrying a bulk file dump), which killed the whole run at 384 KiB.
+// The stream (32 MiB) and output (1 MiB) caps still bound memory, so a longer single line is safe.
+const MAX_PARSER_LINE_BYTES = 8 * 1024 * 1024;
 const MAX_PARSER_STREAM_BYTES = 32 * 1024 * 1024;
 const MAX_PARSER_OUTPUT_BYTES = 1024 * 1024;
 const MAX_OVERSIZED_LINE_PREFIX_BYTES = 512;
