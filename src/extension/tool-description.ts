@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ExtensionConfig, ToolDescriptionMode } from "../shared/types.ts";
+import type { ExtensionConfig, ToolDescriptionMode, ToolSchemaMode } from "../shared/types.ts";
 import { getAgentDir, getProjectConfigDir } from "../shared/utils.ts";
 
 const CUSTOM_TOOL_DESCRIPTION_FILE = "subagent-tool-description.md";
@@ -42,6 +42,42 @@ WORKFLOW DETAILS:
 • Workflow child controls default onto runs.run/runs.all items; child fields override them. worktree:true isolates each child and returns handoff artifacts. usageBudget is shared across the workflow; already-running children are not stopped.
 • Missions auto-attach unless mission:false; await state.get(key)/state.set(key,JSONValue) requires a mission. See guide topic missions. Omit acceptance for reviewer/read-only calls; acceptance.review.required requests independent writer review.
 • Management discovery: list/get/models/guide; create/update/delete/eject/disable/enable/reset/refine; mission.*, schedule.*, watchdog.*, inspector.*, project.*, lane.status/recordMerge/recordSupersession; worktree.discard and plan-only worktree.cleanup; doctor and grant-spawn-budget. Use guide topics agents, missions, observability, tool-reference, configuration, models, watchdog or extension-api for exact action fields. Schedules take script inputs, not direct children; recipes live in the missions guide.`;
+
+export const MINIMAL_SUBAGENT_TOOL_DESCRIPTION = `Delegate execution to a subagent: {agent,task} for a single child, or {workflowScript,args?} for a scripted multi-child workflow. agent/task and workflowScript are mutually exclusive.
+Invoke subagents only when delegation is authorized by the operator's current request or applicable user/project instructions; task size, complexity or risk do not independently authorize delegation.
+Async follows asyncByDefault (normally true) and wakes this session natively on completion: return control, never sleep or poll. Bind durable output with the output parameter, not task prose.
+Management, discovery and control actions (list/get/models/guide/status/interrupt/resume/steer) are NOT available in this minimal tool schema; set config toolSchemaMode "full" to use them.
+Workflow, child launch, prompt runtime or extension load failure is a lane infrastructure blocker. Stop; report the exact failure, run/status and repo/cwd/branch. Never silently switch to a shell, pi -ne, or another CLI: fallback requires explicit owner approval.`;
+
+export const TINY_SUBAGENT_TOOL_DESCRIPTION = `Delegate execution to a subagent: {agent,task} for one child, or {workflowScript} for a scripted multi-child workflow. The two are mutually exclusive.
+Delegate only when the operator's request or applicable instructions authorize it; task size or difficulty alone does not.
+Async follows asyncByDefault (normally true) and wakes this session natively when the child finishes: return control, never sleep or poll. Bind durable results with output, not task prose.
+If a child, workflow or prompt runtime fails to launch, stop and report the exact failure; never fall back to a shell or another CLI without approval.
+Model, reasoning-effort and context overrides come from configuration in this mode; management and discovery actions are not offered.`;
+
+const MINIMAL_TOOL_SCHEMA_ENV = "PI_SUBAGENTS_TOOL_SCHEMA";
+
+function isToolSchemaMode(value: unknown): value is ToolSchemaMode {
+	return value === "full" || value === "minimal" || value === "tiny";
+}
+
+/**
+ * Resolve the parameter-schema variant for the subagent tool.
+ * The PI_SUBAGENTS_TOOL_SCHEMA environment variable wins over config; invalid
+ * values on either side are warned about and ignored, leaving "full".
+ */
+export function resolveToolSchemaMode(config: Pick<ExtensionConfig, "toolSchemaMode">, options?: ToolDescriptionOptions): ToolSchemaMode {
+	const fromEnv = process.env[MINIMAL_TOOL_SCHEMA_ENV]?.trim();
+	if (fromEnv) {
+		if (isToolSchemaMode(fromEnv)) return fromEnv;
+		warn(options, `Ignoring invalid ${MINIMAL_TOOL_SCHEMA_ENV} ${JSON.stringify(fromEnv)}; expected "full", "minimal", or "tiny".`);
+	}
+	const mode = config.toolSchemaMode;
+	if (mode === undefined) return "full";
+	if (isToolSchemaMode(mode)) return mode;
+	warn(options, `Ignoring invalid toolSchemaMode ${JSON.stringify(mode)}; expected "full", "minimal", or "tiny".`);
+	return "full";
+}
 
 function isToolDescriptionMode(value: unknown): value is ToolDescriptionMode {
 	return value === "full" || value === "compact" || value === "custom";
@@ -158,7 +194,10 @@ function withMandatorySafetyGuidance(description: string): string {
 		: SUBAGENT_SAFETY_GUIDANCE;
 }
 
-export function buildSubagentToolDescription(config: Pick<ExtensionConfig, "toolDescriptionMode"> = {}, options?: ToolDescriptionOptions): string {
+export function buildSubagentToolDescription(config: Pick<ExtensionConfig, "toolDescriptionMode" | "toolSchemaMode"> = {}, options?: ToolDescriptionOptions): string {
+	const schemaMode = resolveToolSchemaMode(config, options);
+	if (schemaMode === "tiny") return TINY_SUBAGENT_TOOL_DESCRIPTION;
+	if (schemaMode === "minimal") return MINIMAL_SUBAGENT_TOOL_DESCRIPTION;
 	if (config.toolDescriptionMode === undefined) return DEFAULT_SUBAGENT_TOOL_DESCRIPTION;
 	const mode = resolveToolDescriptionMode(config, options);
 	let description: string;

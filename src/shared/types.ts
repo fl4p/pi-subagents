@@ -2549,6 +2549,9 @@ export interface ProactiveSkillSubagentsConfig {
 }
 
 export type ToolDescriptionMode = "full" | "compact" | "custom";
+
+/** Parameter-schema variant registered for the parent-facing subagent tool. */
+export type ToolSchemaMode = "full" | "minimal" | "tiny";
 export type InlineToolDisplay = "rich" | "summary";
 
 export interface ScheduledRunsConfig {
@@ -2624,6 +2627,8 @@ export interface ExtensionConfig {
 	modelResponseAliases?: Record<string, string[]>;
 	/** Tool description variant registered for the parent-facing subagent tool. Defaults to split metadata. */
 	toolDescriptionMode?: ToolDescriptionMode;
+	/** Parameter-schema variant for the parent-facing subagent tool. "minimal" registers an execution-only subset; "tiny" trims that further and compacts the agent roster. Defaults to "full". */
+	toolSchemaMode?: ToolSchemaMode;
 	/** Inline chat rendering for the subagent tool. Defaults to rich. */
 	inlineToolDisplay?: InlineToolDisplay;
 	/** Density controls for the main chat subagent call/result renderer. */

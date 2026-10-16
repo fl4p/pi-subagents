@@ -20,7 +20,7 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { keyText, type ExtensionAPI, type ExtensionContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Box, Container, Spacer, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
 import { clearAgentDiscoveryCache, discoverAgentSnapshot, discoverAgents, type AgentConfig, type AgentScope } from "../agents/agents.ts";
-import { appendAdvertisedAgentPrompt, buildAdvertisedAgentPrompt } from "../agents/advertised-agent-prompt.ts";
+import { appendAdvertisedAgentPrompt, buildAdvertisedAgentPrompt, type AdvertisedAgentPromptVariant } from "../agents/advertised-agent-prompt.ts";
 import { clearRuntimeAgentsForPi, listRuntimeAgentConfigs, mergeRuntimeAgents } from "../agents/runtime-agent-registry.ts";
 import { registerRuntimeAgentEventListener } from "../agents/runtime-agent-events.ts";
 import { ensureAccessibleDir } from "../shared/accessible-dir.ts";
@@ -72,7 +72,7 @@ import { disposeChildSessions } from "../runs/shared/child-session.ts";
 import { resolveCurrentSubagentCapabilityCeiling } from "../runs/shared/capability-ceiling.ts";
 import { formatDuration, shortenPath } from "../shared/formatters.ts";
 import { loadConfig, resolveAsyncByDefault, resolveScheduledStoreRoot } from "./config.ts";
-import { buildSubagentToolDescription, buildSubagentToolPromptMetadata } from "./tool-description.ts";
+import { buildSubagentToolDescription, buildSubagentToolPromptMetadata, resolveToolSchemaMode } from "./tool-description.ts";
 import { formatWorkflowPreflightSummary, normalizeWorkflowPreflight } from "../workflows/workflow-preflight.ts";
 import { finalizeToolResult } from "./tool-result.ts";
 import { collectGoalContinuationNotices } from "../missions/goal-driver.ts";
@@ -532,12 +532,25 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	let refreshResultDelivery = () => {};
 	let advertisedAgents: AgentConfig[] = [];
 	let advertisedContext: Pick<ExtensionContext, "cwd" | "model"> | undefined;
+	// In minimal tool-schema mode `action` is not advertised, so the model cannot discover
+	// agents with { action: "list" }. Carry the whole eligible roster in the system prompt
+	// instead -- same information, no discovery round-trip. buildAdvertisedAgentPrompt's
+	// "roster" variant applies the opt-in filter, so it is not applied here.
+	const advertisedAgentVariant: AdvertisedAgentPromptVariant = ((): AdvertisedAgentPromptVariant => {
+		switch (resolveToolSchemaMode(config)) {
+			case "tiny": return "roster-compact";
+			case "minimal": return "roster";
+			default: return "advertised";
+		}
+	})();
 	const refreshAdvertisedAgents = () => {
 		advertisedAgents = [];
 		if (!advertisedContext) return;
 		clearAgentDiscoveryCache();
-		advertisedAgents = discoverAgents(advertisedContext.cwd, "both", advertisedContext.model?.provider).agents
-			.filter((agent) => agent.advertise === true);
+		const discovered = discoverAgents(advertisedContext.cwd, "both", advertisedContext.model?.provider).agents;
+		advertisedAgents = advertisedAgentVariant !== "advertised"
+			? discovered
+			: discovered.filter((agent) => agent.advertise === true);
 	};
 	const hasResultDeliveryDemand = () => {
 		if ([...state.asyncJobs.values()].some((job) => job.status === "queued" || job.status === "running")) return true;
@@ -764,7 +777,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	});
 
 
-	const parameters = createSubagentParamsSchema();
+	const parameters = createSubagentParamsSchema(config);
 	const tool: ToolDefinition<typeof parameters, Details> = {
 		name: "subagent",
 		label: "Subagent",
@@ -822,7 +835,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		const selectedTools = event.systemPromptOptions?.selectedTools ?? (typeof pi.getActiveTools === "function" ? pi.getActiveTools() : []);
 		const sessionId = state.currentSessionId ?? resolveCurrentSessionId(ctx.sessionManager);
 		const advertisedPrompt = Array.isArray(selectedTools) && selectedTools.includes("subagent")
-			? buildAdvertisedAgentPrompt(advertisedAgents, resolveCurrentSubagentCapabilityCeiling(sessionId))
+			? buildAdvertisedAgentPrompt(advertisedAgents, resolveCurrentSubagentCapabilityCeiling(sessionId), advertisedAgentVariant)
 			: undefined;
 		const systemPrompt = appendAdvertisedAgentPrompt(event.systemPrompt, advertisedPrompt);
 		if (systemPrompt !== event.systemPrompt) return { systemPrompt };

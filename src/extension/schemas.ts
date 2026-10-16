@@ -3,6 +3,8 @@
  */
 
 import { Type } from "typebox";
+import type { ExtensionConfig } from "../shared/types.ts";
+import { resolveToolSchemaMode, type ToolDescriptionOptions } from "./tool-description.ts";
 
 function keepTopLevelParameterDescriptions<T>(schema: T): T {
 	return pruneNestedDescriptions(schema, []) as T;
@@ -402,7 +404,61 @@ const SubagentParamsSchema = Type.Object(SubagentParamProperties);
 
 export const SubagentParams = keepTopLevelParameterDescriptions(SubagentParamsSchema);
 
-export function createSubagentParamsSchema(): typeof SubagentParams {
+/**
+ * Properties kept when config toolSchemaMode (or PI_SUBAGENTS_TOOL_SCHEMA) is "minimal".
+ * Execution-only: `action` and every management/mission/scheduling/multi-machine/view/
+ * isolation/budget property is dropped to shrink the registered prompt footprint.
+ */
+export const MINIMAL_SUBAGENT_PARAM_KEYS = [
+	"agent",
+	"task",
+	"workflowScript",
+	"async",
+	"model",
+	"thinking",
+	"fast",
+	"cwd",
+	"context",
+	"output",
+	"outputSchema",
+	"timeoutMs",
+] as const satisfies readonly (keyof typeof SubagentParamProperties)[];
+
+/**
+ * Properties kept when the mode is "tiny": the minimal keep-list without the per-call
+ * model/effort overrides (`model`, `thinking`, `fast`) or `context`, all four of which
+ * have configuration-level equivalents. Intended for local models where prompt tokens
+ * are the binding constraint.
+ */
+export const TINY_SUBAGENT_PARAM_KEYS = [
+	"agent",
+	"task",
+	"workflowScript",
+	"async",
+	"cwd",
+	"output",
+	"outputSchema",
+	"timeoutMs",
+] as const satisfies readonly (keyof typeof SubagentParamProperties)[];
+
+function paramsForKeys(keys: readonly (keyof typeof SubagentParamProperties)[]) {
+	return keepTopLevelParameterDescriptions(Type.Object(Object.fromEntries(
+		keys.map((key) => [key, SubagentParamProperties[key]]),
+	)));
+}
+
+const MinimalSubagentParams = paramsForKeys(MINIMAL_SUBAGENT_PARAM_KEYS);
+const TinySubagentParams = paramsForKeys(TINY_SUBAGENT_PARAM_KEYS);
+
+/**
+ * Called with no config (for example from fanout-child) this returns the unchanged
+ * full schema. Pass the extension config to opt into the "minimal" variant.
+ */
+export function createSubagentParamsSchema(config?: Pick<ExtensionConfig, "toolSchemaMode">, options?: ToolDescriptionOptions): typeof SubagentParams {
+	if (config === undefined) return SubagentParams;
+	const mode = resolveToolSchemaMode(config, options);
+	if (mode === "tiny") return TinySubagentParams as unknown as typeof SubagentParams;
+	if (mode === "minimal") return MinimalSubagentParams as unknown as typeof SubagentParams;
 	return SubagentParams;
 }
 

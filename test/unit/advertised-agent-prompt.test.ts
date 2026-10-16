@@ -108,3 +108,98 @@ describe("advertised agent prompt", () => {
 		assert.equal(appendAdvertisedAgentPrompt(undefined, undefined), undefined);
 	});
 });
+
+describe("advertised agent prompt: roster variant", () => {
+	it("ignores the advertise opt-in so agent names reach a minimal-schema model", () => {
+		const prompt = buildAdvertisedAgentPrompt([
+			agent("opted-in", { advertise: true }),
+			agent("not-opted-in"),
+		], undefined, "roster");
+		assert.ok(prompt);
+		assert.match(prompt, /<name>opted-in<\/name>/u);
+		assert.match(prompt, /<name>not-opted-in<\/name>/u);
+	});
+
+	it("still honours disabled, runtime source and the capability ceiling", () => {
+		const prompt = buildAdvertisedAgentPrompt([
+			agent("kept"),
+			agent("turned-off", { disabled: true }),
+			agent("runtime-made", { source: "runtime" }),
+			agent("out-of-ceiling"),
+		], {
+			version: 1,
+			allowedAgents: ["kept", "turned-off", "runtime-made"],
+			denyExtensions: false,
+		} as never, "roster");
+		assert.ok(prompt);
+		assert.match(prompt, /<name>kept<\/name>/u);
+		for (const excluded of ["turned-off", "runtime-made", "out-of-ceiling"]) {
+			assert.doesNotMatch(prompt, new RegExp(`<name>${excluded}</name>`, "u"));
+		}
+	});
+
+	it("never tells the model to preflight with an action the minimal schema removed", () => {
+		const prompt = buildAdvertisedAgentPrompt([agent("solo")], undefined, "roster");
+		assert.ok(prompt);
+		assert.doesNotMatch(prompt, /action/u);
+		assert.match(prompt, /external-cli/u);
+	});
+
+	it("tags external-cli agents in roster mode only", () => {
+		const cli = agent("via-cli", { advertise: true, runner: { kind: "external-cli" } as never });
+		const roster = buildAdvertisedAgentPrompt([cli], undefined, "roster");
+		const advertised = buildAdvertisedAgentPrompt([cli], undefined);
+		assert.ok(roster);
+		assert.ok(advertised);
+		assert.match(roster, /<kind>external-cli<\/kind>/u);
+		assert.doesNotMatch(advertised, /<kind>external-cli<\/kind>/u);
+	});
+
+	it("leaves the default variant byte-identical to the pre-existing behaviour", () => {
+		const agents = [agent("alpha", { advertise: true }), agent("beta")];
+		assert.equal(
+			buildAdvertisedAgentPrompt(agents, undefined),
+			buildAdvertisedAgentPrompt(agents, undefined, "advertised"),
+		);
+	});
+});
+
+describe("advertised agent prompt: roster-compact variant", () => {
+	it("carries name and description without per-agent XML scaffolding", () => {
+		const prompt = buildAdvertisedAgentPrompt([agent("scout")], undefined, "roster-compact");
+		assert.ok(prompt);
+		assert.doesNotMatch(prompt, /<subagent>|<name>|<description>/u);
+		assert.match(prompt, /^- scout: /mu);
+		assert.match(prompt, /^<advertised_subagents>$/mu, "outer tag must stay so stale blocks are still stripped");
+	});
+
+	it("is materially smaller than the XML roster for the same agents", () => {
+		const agents = Array.from({ length: 13 }, (_, i) => agent(`agent-${i}`, {
+			description: "A reasonably wordy agent description of the kind real agents carry.",
+		}));
+		const xml = buildAdvertisedAgentPrompt(agents, undefined, "roster");
+		const compact = buildAdvertisedAgentPrompt(agents, undefined, "roster-compact");
+		assert.ok(xml && compact);
+		assert.ok(compact.length < xml.length / 2, `${compact.length} should be < half of ${xml.length}`);
+	});
+
+	it("marks external-cli inline and truncates long descriptions", () => {
+		const prompt = buildAdvertisedAgentPrompt([
+			agent("via-cli", { runner: { kind: "external-cli" } as never, description: "x".repeat(300) }),
+		], undefined, "roster-compact");
+		assert.ok(prompt);
+		assert.match(prompt, /- via-cli \[external-cli\]: /u);
+		const line = prompt.split("\n").find((l) => l.startsWith("- via-cli"));
+		assert.ok(line && line.length < 120, `entry line should be short, got ${line?.length}`);
+	});
+
+	it("still drops disabled agents and honours the ceiling", () => {
+		const prompt = buildAdvertisedAgentPrompt([
+			agent("kept"),
+			agent("turned-off", { disabled: true }),
+		], undefined, "roster-compact");
+		assert.ok(prompt);
+		assert.match(prompt, /- kept:/u);
+		assert.doesNotMatch(prompt, /- turned-off:/u);
+	});
+});

@@ -110,6 +110,107 @@ or ask: "Check whether subagents and intercom are set up correctly."
 
 For installed-version help, use `/subagents-guide [topic]` or `subagent({ action: "guide", topic: "workflows" })`. The default topic is `overview`; available topics are `overview`, `workflows`, `agents`, `missions`, `observability`, `tool-reference`, `configuration`, `models`, `watchdog`, and `extension-api`.
 
+## Minimal tool schema (small prompts for local models)
+
+The registered `subagent` tool carries 82 parameters and a ~4.9 KB description. On a
+local model with a tight context window that is a lot of prompt to spend before any work
+starts. Set `toolSchemaMode` in `config.json` to register an execution-only subset instead:
+
+```json
+{ "toolSchemaMode": "minimal" }
+```
+
+For a one-off run, the environment variable wins over config:
+
+```bash
+PI_SUBAGENTS_TOOL_SCHEMA=minimal pi -p "..."
+```
+
+Values are `"full"` (the default, unchanged behaviour), `"minimal"`, and `"tiny"`. An
+invalid value is warned about and ignored, leaving `"full"`.
+
+`"tiny"` drops four more properties from the minimal keep-list — `model`, `thinking`,
+`fast` and `context` — all of which have configuration-level equivalents, so a
+single-model deployment loses nothing it can act on. It also renders the agent roster as
+one line per agent instead of XML. Keep-list: `agent`, `task`, `workflowScript`, `async`,
+`cwd`, `output`, `outputSchema`, `timeoutMs`.
+
+Minimal mode keeps exactly these parameters:
+
+`agent`, `task`, `workflowScript`, `async`, `model`, `thinking`, `fast`, `cwd`,
+`context`, `output`, `outputSchema`, `timeoutMs`
+
+Everything else is dropped from the advertised schema, **including `action`**, and a
+shorter tool description is registered to match. Child fanout mode always registers the
+full schema.
+
+**This narrows what the model is told, not what the extension accepts.** The schema sets no
+`additionalProperties: false` (neither does the full schema), so a dropped property is
+still accepted and still dispatched if a model sends it anyway. Minimal mode is therefore a
+smaller *advertisement*, not an enforced execution-only interface. In practice a model that
+cannot see `action` will not call it — but do not rely on minimal mode as a capability
+boundary or a safety control.
+
+### Agent discovery in minimal mode
+
+With `action` unadvertised, `{action:"list"}` is not something the model can discover, so
+minimal mode carries the agent roster in the system prompt instead. The existing
+`<advertised_subagents>` block switches to a "roster" variant that:
+
+- lists **every** eligible agent, not only those with `advertise: true` (the opt-in exists
+  to keep the block small when the model can ask for the full list on demand — in minimal
+  mode it cannot);
+- tags external-CLI agents `<kind>external-cli</kind>` and states in the preamble that such
+  a CLI must already be installed and authenticated, since the model can no longer preflight
+  with `{action:"list", capabilities:true}`;
+- drops the instruction to make that preflight call.
+
+`disabled`, `source: "runtime"`, the capability ceiling and the 16-agent / 12 KB caps all
+still apply. Full mode is byte-for-byte unchanged.
+
+This costs prompt tokens but saves a round-trip, which is the better trade on a slow local
+model: the discovery call would cost a generation plus a re-prefill of the result.
+
+Switch back to `full` mode for management work.
+
+Some runtime strings still suggest removed actions — `async-execution.ts` recommends
+`subagent({action:"status", id:"..."})` in the result of every async launch. Those calls
+currently succeed, per the paragraph above. Anyone enforcing the boundary later must update
+them first.
+
+Measured on one real request body (same session, same tool set, 59 tools, captured from
+the wire). Byte counts are `json.dumps(..., separators=(',',':'))`; description figures are
+characters:
+
+| State | `subagent` tool bytes | properties | description chars | whole request bytes |
+|---|---|---|---|---|
+| `toolSchemaMode` unset (default) | 18,087 | 82 | 4,926 | 134,869 |
+| `toolSchemaMode: "minimal"` | 3,188 | 12 | 1,028 | 119,970 |
+| `PI_SUBAGENTS_TOOL_SCHEMA=minimal` | 3,188 | 12 | 1,028 | 119,970 |
+
+That is 14,899 bytes (~11%) off the whole request, and 82% off the `subagent` tool itself.
+Rendered through a real target model's chat template and tokenized:
+
+| state | extension total | whole prompt | vs default |
+|---|---:|---:|---:|
+| `full` (default) | 4,870 tok | 32,794 | — |
+| `minimal` | 1,551 tok | 29,475 | −10.12% |
+| **`tiny`** | **862 tok** | **28,786** | **−12.22%** |
+
+"Extension total" is leave-one-out marginal cost: both `subagent*` tools plus the agent
+roster. `subagent_supervisor` is 135 tokens of it and is registered eagerly; making it
+lazy would save those tokens but invalidate the server's prefix cache mid-session, which
+costs far more than it saves.
+
+The agent roster costs 666 tokens in `minimal` and 243 in `tiny`, and buys back agent
+discovery with no round-trip. Measured with 13 agents.
+
+**The latency saving is not per-turn.** With server-side prefix caching (mlx-vlm APC, vLLM
+automatic prefix caching, …) a warm prefix already skips the tool block during prefill, so
+those tokens cost nothing on a cache hit. The saving is real on a cold prefix — first turn,
+cache eviction, server restart, or any change to the prefix ahead of the tools — and it
+always buys context-window capacity.
+
 ## Documentation
 
 The full reference lives in `docs/`:

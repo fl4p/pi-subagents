@@ -162,6 +162,9 @@ function validateConfig(config: Record<string, unknown>): void {
 			|| config.maxActiveAsyncRunsPerSession < 0)) {
 		throw new Error("config.maxActiveAsyncRunsPerSession must be a non-negative integer");
 	}
+	if (config.toolSchemaMode !== undefined && config.toolSchemaMode !== "full" && config.toolSchemaMode !== "minimal" && config.toolSchemaMode !== "tiny") {
+		throw new Error('config.toolSchemaMode must be "full", "minimal", or "tiny"');
+	}
 	if (config.resultScanLogging !== undefined && config.resultScanLogging !== "all" && config.resultScanLogging !== "activity" && config.resultScanLogging !== "off") {
 		throw new Error('config.resultScanLogging must be "all", "activity", or "off"');
 	}
