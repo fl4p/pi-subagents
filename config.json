@@ -1,4 +1,7 @@
 {
   "asyncByDefault": true,
-  "waitTool": { "enabled": true }
+  "waitTool": {
+    "enabled": true
+  },
+  "toolSchemaMode": "tiny"
 }
