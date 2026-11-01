@@ -13,10 +13,18 @@ export function findPiPackageRootFromEntry(
 	while (dir !== path.dirname(dir)) {
 		const packageJsonPath = path.join(dir, "package.json");
 		if (fs.existsSync(packageJsonPath)) {
-			const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {
-				name?: unknown;
-			};
-			if (pkg.name === PI_CODING_AGENT_PACKAGE) return dir;
+			try {
+				const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {
+					name?: unknown;
+					version?: unknown;
+				};
+				if (pkg.name === PI_CODING_AGENT_PACKAGE) {
+					if (typeof pkg.version === "string" && pkg.version.includes("test-shim")) {
+						return undefined;
+					}
+					return dir;
+				}
+			} catch {}
 		}
 		dir = path.dirname(dir);
 	}
@@ -25,12 +33,22 @@ export function findPiPackageRootFromEntry(
 
 export function resolveInstalledPiPackageRoot(): string | undefined {
 	try {
-		return findPiPackageRootFromEntry(
+		const resolved = findPiPackageRootFromEntry(
 			fileURLToPath(import.meta.resolve(PI_CODING_AGENT_PACKAGE)),
 		);
+		if (resolved) return resolved;
 	} catch {
-		return undefined;
+		// fall through to system resolution
 	}
+	for (const candidate of [
+		"/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent",
+		"/usr/local/lib/node_modules/@earendil-works/pi-coding-agent",
+	]) {
+		if (fs.existsSync(candidate) && findPiPackageRootFromEntry(path.join(candidate, "package.json"))) {
+			return candidate;
+		}
+	}
+	return undefined;
 }
 
 export function resolvePiPackageRoot(): string | undefined {
