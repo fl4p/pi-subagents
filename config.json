@@ -3,5 +3,7 @@
   "waitTool": {
     "enabled": true
   },
-  "toolSchemaMode": "tiny"
+  "toolSchemaMode": "tiny",
+  "timeoutMs": 3600000,
+  "checkpointBeforeDeadlineMs": 180000
 }
