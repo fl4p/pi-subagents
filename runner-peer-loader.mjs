@@ -10,15 +10,6 @@ const redirected = new Set([
 
 export function initialize(data) {
 	aliases = data?.aliases ?? {};
-	for (const [k, v] of Object.entries(aliases)) {
-		if (typeof v === "string" && v.includes("test-shim")) {
-			if (k === "@earendil-works/pi-coding-agent") {
-				aliases[k] = "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js";
-			} else {
-				delete aliases[k];
-			}
-		}
-	}
 	nativeRunner = data?.nativeRunner === true;
 	compiledRunner = data?.compiledRunner === true;
 	packageRootUrl = data?.packageRootUrl;

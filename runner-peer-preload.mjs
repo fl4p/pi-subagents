@@ -2,15 +2,6 @@ import * as nodeModule from "node:module";
 import { pathToFileURL } from "node:url";
 
 const aliases = JSON.parse(process.env.JITI_ALIAS ?? "{}");
-for (const [k, v] of Object.entries(aliases)) {
-	if (typeof v === "string" && v.includes("test-shim")) {
-		if (k === "@earendil-works/pi-coding-agent") {
-			aliases[k] = "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js";
-		} else {
-			delete aliases[k];
-		}
-	}
-}
 const nativeRunner = process.env.PI_ASYNC_NATIVE_RUNNER === "1";
 const compiledRunner = process.env.PI_ASYNC_COMPILED_RUNNER === "1";
 // Pi's jiti loader owns aliases for external extensions; these hooks only supply peers to our compiled package.
