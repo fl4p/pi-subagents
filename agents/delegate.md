@@ -3,7 +3,7 @@ name: delegate
 description: Lightweight subagent that inherits the parent model with no default reads
 systemPromptMode: append
 inheritProjectContext: true
-tools: read, grep, find, ls, bash, edit, write, contact_supervisor
+tools: read, grep, find, ls, bash, web_search, fetch_content, get_search_content, source_check, edit, write, contact_supervisor
 inheritSkills: false
 ---
 

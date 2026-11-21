@@ -7,7 +7,7 @@ thinking: high
 systemPromptMode: replace
 inheritProjectContext: true
 inheritSkills: false
-tools: read, grep, find, ls, bash, edit, write, contact_supervisor
+tools: read, grep, find, ls, bash, web_search, fetch_content, get_search_content, source_check, edit, write, contact_supervisor
 defaultContext: fresh
 defaultReads: context.md, plan.md
 defaultProgress: true

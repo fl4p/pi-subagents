@@ -224,8 +224,8 @@ describe("agent management config parsing", () => {
 		assert.ok(capabilities);
 		const reviewer = capabilities.agents.find((agent) => agent.name === "reviewer");
 		assert.ok(reviewer, "reviewer builtin should be present in capability output");
-		assert.deepEqual(reviewer.tools.names, ["read", "grep", "find", "ls", "watchdog_diff", "contact_supervisor"]);
-		assert.match(readText(listed), /Tools: read, grep, find, ls, watchdog_diff, contact_supervisor/);
+		assert.deepEqual(reviewer.tools.names, ["read", "grep", "find", "ls", "bash", "watchdog_diff", "web_search", "fetch_content", "get_search_content", "source_check", "contact_supervisor"]);
+		assert.match(readText(listed), /Tools: read, grep, find, ls, bash, watchdog_diff, web_search, fetch_content, get_search_content, source_check, contact_supervisor/);
 		assert.deepEqual(reviewer.acceptance, { role: "read-only" });
 	});
 

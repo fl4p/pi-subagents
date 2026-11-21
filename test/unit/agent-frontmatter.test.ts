@@ -1986,12 +1986,12 @@ Do work
 			process.env.USERPROFILE = homeDir;
 			const agents = discoverAgentsAll(dir).builtin;
 			const expectedTools = {
-				worker: ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor"],
-				delegate: ["read", "grep", "find", "ls", "bash", "edit", "write", "contact_supervisor"],
-				reviewer: ["read", "grep", "find", "ls", "watchdog_diff", "contact_supervisor"],
-				scout: ["read", "grep", "find", "ls", "bash", "write", "contact_supervisor"],
-				researcher: ["read", "write", "web_search", "fetch_content", "get_search_content", "source_check"],
-				"evidence-auditor": ["read", "web_search", "fetch_content", "get_search_content", "source_check"],
+				worker: ["read", "grep", "find", "ls", "bash", "web_search", "fetch_content", "get_search_content", "source_check", "edit", "write", "contact_supervisor"],
+				delegate: ["read", "grep", "find", "ls", "bash", "web_search", "fetch_content", "get_search_content", "source_check", "edit", "write", "contact_supervisor"],
+				reviewer: ["read", "grep", "find", "ls", "bash", "watchdog_diff", "web_search", "fetch_content", "get_search_content", "source_check", "contact_supervisor"],
+				scout: ["read", "grep", "find", "ls", "bash", "web_search", "fetch_content", "get_search_content", "source_check", "write", "contact_supervisor"],
+				researcher: ["read", "write", "bash", "web_search", "fetch_content", "get_search_content", "source_check"],
+				"evidence-auditor": ["read", "bash", "web_search", "fetch_content", "get_search_content", "source_check"],
 			};
 			for (const [name, tools] of Object.entries(expectedTools)) {
 				const agent = agents.find((candidate) => candidate.name === name);
