@@ -1,0 +1,8 @@
+{
+  "asyncByDefault": true,
+  "waitTool": {
+    "enabled": true
+  },
+  "timeoutMs": 3600000,
+  "checkpointBeforeDeadlineMs": 180000
+}
