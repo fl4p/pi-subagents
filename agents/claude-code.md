@@ -1,6 +1,6 @@
 ---
 name: claude-code
-description: Read-only Claude Code CLI analysis; requires local authentication and trusted user settings/hooks
+description: One-shot read-only Claude Code advice; no tools, Bash, browser, steering, resume, or supervisor channel
 runner:
   type: external-cli
   adapter: claude-code

@@ -157,6 +157,12 @@ describe("subagent control attention state", () => {
 		assert.equal(deriveActivityState({ config: defaults, startedAt: 0, turnCount: 1, thinking: "high", now: 300_001 }), "needs_attention");
 	});
 
+	it("applies high-effort grace to a quiet external CLI run", () => {
+		const defaults = resolveControlConfig();
+		assert.equal(deriveActivityState({ config: defaults, startedAt: 0, lastActivityAt: 0, turnCount: 1, thinking: "high", now: 60_001 }), undefined);
+		assert.equal(deriveActivityState({ config: defaults, startedAt: 0, lastActivityAt: 0, turnCount: 1, thinking: "high", now: 300_001 }), "needs_attention");
+	});
+
 	it("keeps explicit idle threshold overrides higher priority than thinking scale", () => {
 		const explicit = resolveControlConfig(undefined, { needsAttentionAfterMs: 90_000 });
 
@@ -261,6 +267,29 @@ describe("subagent control attention state", () => {
 		assert.match(message, /Interrupt: subagent\(\{ action: "interrupt", id: "78f659a3" \}\)/);
 		assert.doesNotMatch(message, /Wait:/);
 		assert.match(formatControlNoticeMessage({ ...event, index: 2 }), /Top-level live async nudge: subagent\(\{ action: "steer", id: "78f659a3", message: "[^"]*", options: \{ index: 2 \} \}\)/);
+	});
+
+	it("offers only supported controls for one-shot external runners", () => {
+		const event = buildControlEvent({
+			to: "needs_attention",
+			runId: "external-run",
+			agent: "claude-code-writer",
+			controlCapabilities: { steer: false, resume: false },
+		});
+
+		const message = formatControlNoticeMessage(event);
+
+		assert.match(message, /one-shot: it cannot be steered or resumed/);
+		assert.match(message, /launch a new run with a complete brief/);
+		assert.match(message, /Status: subagent\(\{ action: "status", id: "external-run" \}\)/);
+		assert.match(message, /Stop: subagent\(\{ action: "stop", id: "external-run" \}\)/);
+		assert.doesNotMatch(message, /action: "steer"|action: "resume"|action: "interrupt"|Direct intercom target/);
+	});
+
+	it("keeps native control guidance unchanged when capabilities are absent", () => {
+		const event = buildControlEvent({ to: "needs_attention", runId: "native-run", agent: "worker" });
+		assert.match(formatControlNoticeMessage(event), /Top-level live async nudge:/);
+		assert.match(formatControlNoticeMessage(event), /Routed live nested nudge:/);
 	});
 
 	it("formats open-tool attention notices with tool facts", () => {

@@ -699,6 +699,7 @@ interface SingleStepContext {
 	onExternalProcess?: (process: ExternalProcessStatus) => void;
 	prepareExternalActivity?: (cwd: string, signal: AbortSignal) => Promise<void>;
 	onExternalStreamActivity?: () => void;
+	onExternalEffort?: (effort?: string) => void;
 	onExternalJob?: (status: ExternalJobStatus) => void;
 	skipAcceptance?: () => boolean;
 	/** Authoritative owner decision after event delivery; undefined includes incomplete run-wide usage. */
@@ -968,6 +969,8 @@ export async function runSingleStepInner(
 					? resolveCursorAgentLaunch({ adapter: step.runner.adapter, command: step.runner.command, cwd: externalCwd, asyncDir: path.dirname(ctx.outputFile), stepIndex: ctx.flatIndex })
 				: undefined;
 		const runner = resolveExternalCliRunnerStatus({ ...step.runner, ...(adapterLaunch ? { args: adapterLaunch.args } : {}), ...(step.machine ? { machine: step.machine } : {}) });
+		const effortIndex = runner.args.indexOf("--effort");
+		ctx.onExternalEffort?.(effortIndex >= 0 ? runner.args[effortIndex + 1] : undefined);
 		const outputSnapshot = captureSingleOutputSnapshot(step.outputPath);
 		const onExternalOutput = (chunk: Buffer): void => {
 			if (chunk.length > 0) ctx.onExternalStreamActivity?.();
@@ -1592,6 +1595,7 @@ async function runSingleStep(
 type RunnerStatusStep = NonNullable<AsyncStatus["steps"]>[number] & {
 	exitCode?: number | null;
 	description?: string;
+	claudeCodeEffort?: string;
 };
 
 function externalRunnerStatus(runner: SubagentStep["runner"], machine: SubagentStep["machine"]): ExternalCliRunnerStatus | ExternalJobRunnerStatus | undefined {
@@ -1972,6 +1976,7 @@ export async function runSubagent(
 					...(task.contextLimit !== undefined ? { contextLimit: task.contextLimit } : {}),
 					thinking: task.thinking,
 					requestedModel: task.requestedModel,
+					...(task.claudeCodeOverrideArgs?.includes("--effort") ? { claudeCodeEffort: task.claudeCodeOverrideArgs[task.claudeCodeOverrideArgs.indexOf("--effort") + 1] } : {}),
 					recentTools: [],
 					recentOutput: [],
 				}));
@@ -2026,6 +2031,7 @@ export async function runSubagent(
 				...(step.contextLimit !== undefined ? { contextLimit: step.contextLimit } : {}),
 				thinking: step.thinking,
 				requestedModel: step.requestedModel,
+				...(step.claudeCodeOverrideArgs?.includes("--effort") ? { claudeCodeEffort: step.claudeCodeOverrideArgs[step.claudeCodeOverrideArgs.indexOf("--effort") + 1] } : {}),
 				recentTools: [],
 				recentOutput: [],
 			}));
@@ -2751,6 +2757,12 @@ export async function runSubagent(
 			...(contextStep?.phase ? { phase: contextStep.phase } : {}),
 			...(contextStep?.label ? { label: contextStep.label } : {}),
 			...(contextStep?.description ? { taskPreview: contextStep.description } : {}),
+			...(contextStep?.runner ? {
+				controlCapabilities: {
+					steer: contextStep.runner.capabilities.steer,
+					resume: contextStep.runner.capabilities.resume,
+				},
+			} : {}),
 		};
 		const childIntercomTarget = config.childIntercomTargets?.[event.index ?? statusPayload.currentStep];
 		const channels = event.type === "active_long_running"
@@ -3001,6 +3013,10 @@ export async function runSubagent(
 			else remaining.push(request);
 		}
 		pendingStepSteers.push(...remaining);
+	};
+	const updateExternalEffort = (flatIndex: number, effort: string | undefined): void => {
+		const step = statusPayload.steps[flatIndex];
+		if (step) setOptionalProperty(step, "claudeCodeEffort", effort);
 	};
 	const updateStepModel = (flatIndex: number, model: string | undefined, thinking: string | undefined, contextLimit?: number, now = Date.now()): void => {
 		const step = statusPayload.steps[flatIndex];
@@ -3287,7 +3303,9 @@ export async function runSubagent(
 				lastActivityAt,
 				turnCount: flatSteps[index]?.runner?.type === "external-cli" ? 1 : step.turnCount,
 				currentTool: step.currentTool,
-				thinking: step.thinking,
+				// A one-shot CLI has no native turns to observe. Scale its quiet-model
+				// grace from the CLI effort, not the absent native thinking field.
+				thinking: step.thinking ?? step.claudeCodeEffort,
 				now,
 			}));
 			if (idleState === "needs_attention") {
@@ -3757,6 +3775,7 @@ export async function runSubagent(
 					...(task.thinking ? { thinking: task.thinking } : {}),
 					...(task.thinkingCeiling ? { thinkingCeiling: task.thinkingCeiling } : {}),
 					...(task.requestedModel ? { requestedModel: task.requestedModel } : {}),
+					...(task.claudeCodeOverrideArgs?.includes("--effort") ? { claudeCodeEffort: task.claudeCodeOverrideArgs[task.claudeCodeOverrideArgs.indexOf("--effort") + 1] } : {}),
 					recentTools: [],
 					recentOutput: [],
 				});
@@ -3887,6 +3906,7 @@ export async function runSubagent(
 					onExternalProcess: (process) => updateExternalProcess(fi, process),
 					prepareExternalActivity: (externalCwd, signal) => prepareExternalActivity(fi, externalCwd, signal),
 					onExternalStreamActivity: () => recordExternalStreamActivity(fi),
+					onExternalEffort: (effort) => updateExternalEffort(fi, effort),
 					onExternalJob: (externalJob) => updateExternalJob(fi, externalJob),
 					skipAcceptance: () => timedOut || stopped || childStopRequests.has(fi),
 					usageBudgetExhausted: continuationUsageBudgetExhausted,
@@ -4261,6 +4281,7 @@ export async function runSubagent(
 							onExternalProcess: (process) => updateExternalProcess(fi, process),
 							prepareExternalActivity: (externalCwd, signal) => prepareExternalActivity(fi, externalCwd, signal),
 							onExternalStreamActivity: () => recordExternalStreamActivity(fi),
+							onExternalEffort: (effort) => updateExternalEffort(fi, effort),
 							onExternalJob: (externalJob) => updateExternalJob(fi, externalJob),
 							skipAcceptance: () => timedOut || stopped || childStopRequests.has(fi),
 							usageBudgetExhausted: continuationUsageBudgetExhausted,
@@ -4612,6 +4633,7 @@ export async function runSubagent(
 				onExternalProcess: (process) => updateExternalProcess(flatIndex, process),
 				prepareExternalActivity: (externalCwd, signal) => prepareExternalActivity(flatIndex, externalCwd, signal),
 				onExternalStreamActivity: () => recordExternalStreamActivity(flatIndex),
+				onExternalEffort: (effort) => updateExternalEffort(flatIndex, effort),
 				onExternalJob: (externalJob) => updateExternalJob(flatIndex, externalJob),
 				skipAcceptance: () => timedOut || stopped || childStopRequests.has(flatIndex),
 				usageBudgetExhausted: continuationUsageBudgetExhausted,

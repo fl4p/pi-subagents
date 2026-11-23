@@ -8,6 +8,7 @@ import { PROMPT_REDACTED, readStatus } from "../../shared/utils.ts";
 import { deriveChildSessionName } from "../../shared/child-session-name.ts";
 import type { DynamicRunnerGroup, ParallelStepGroup, RunnerStep, RunnerSubagentStep } from "../shared/parallel-utils.ts";
 import { isDynamicRunnerGroup, isParallelGroup } from "../shared/parallel-utils.ts";
+import { resolveExternalCliRunnerStatus } from "../shared/external-cli-contract.ts";
 
 const APPEND_REQUESTS_DIR = "append-requests";
 
@@ -159,12 +160,25 @@ export function statusStepDescription(task: string | undefined): string | undefi
 		: description;
 }
 
+function runnerStatusForTask(task: RunnerSubagentStep): StatusStep["runner"] {
+	if (task.runner?.type === "external-cli") return resolveExternalCliRunnerStatus(task.runner);
+	if (task.runner?.type === "external-job") return {
+		type: "external-job",
+		provider: task.runner.provider,
+		options: task.runner.options ?? {},
+		capabilities: { stop: false, steer: false, resume: false, structuredOutput: false, toolEvents: false },
+	};
+	return undefined;
+}
+
 function statusStepForTask(task: RunnerSubagentStep): StatusStep {
 	const description = statusStepDescription(task.task);
 	const sessionName = task.sessionName ?? deriveChildSessionName({ agent: task.agent, task: task.task, label: task.label });
+	const runner = runnerStatusForTask(task);
 	return {
 		agent: task.agent,
 		...(sessionName ? { sessionName } : {}),
+		...(runner ? { runner } : {}),
 		...(description ? { description } : {}),
 		...(task.context ? { context: task.context } : {}),
 		phase: task.phase,
@@ -189,6 +203,7 @@ function statusStepsForRunnerStep(step: RunnerStep): StatusStep[] {
 		return [{
 			agent: `expand:${step.parallel.agent}`,
 			...(step.parallel.context ? { context: step.parallel.context } : {}),
+			...(runnerStatusForTask(step.parallel) ? { runner: runnerStatusForTask(step.parallel) } : {}),
 			phase: step.phase ?? step.parallel.phase,
 			label: step.label ?? step.parallel.label ?? `Dynamic fanout (${step.collect.as})`,
 			outputName: step.collect.as,

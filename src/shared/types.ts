@@ -394,6 +394,8 @@ export interface ControlEvent {
 	toolCallId?: string;
 	/** True only when the child's native command controller manages `toolCallId`; gates command-control suggestions in notices. */
 	hasCommandController?: boolean;
+	/** Runner capabilities known when the notice was created; never inferred from agent names. */
+	controlCapabilities?: { steer: boolean; resume: boolean };
 	currentToolDurationMs?: number;
 	currentPath?: string;
 	elapsedMs?: number;

@@ -140,6 +140,7 @@ export function buildControlEvent(input: {
 	currentTool?: string;
 	toolCallId?: string;
 	hasCommandController?: boolean;
+	controlCapabilities?: ControlEvent["controlCapabilities"];
 	currentToolDurationMs?: number;
 	currentPath?: string;
 	elapsedMs?: number;
@@ -174,6 +175,7 @@ export function buildControlEvent(input: {
 		...(input.currentTool ? { currentTool: input.currentTool } : {}),
 		...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
 		...(input.hasCommandController !== undefined ? { hasCommandController: input.hasCommandController } : {}),
+		...(input.controlCapabilities !== undefined ? { controlCapabilities: { ...input.controlCapabilities } } : {}),
 		...(input.currentToolDurationMs !== undefined ? { currentToolDurationMs: input.currentToolDurationMs } : {}),
 		...(input.currentPath ? { currentPath: input.currentPath } : {}),
 		...(elapsedMs !== undefined ? { elapsedMs } : {}),
@@ -240,6 +242,16 @@ export function formatControlNoticeMessage(event: ControlEvent, childIntercomTar
 	];
 	const status = `Status: subagent({ action: "status", id: "${runTarget}" })`;
 	const lines = (items: Array<string | undefined>) => items.filter((line): line is string => Boolean(line)).join("\n");
+	const capabilities = event.controlCapabilities;
+	if (capabilities && (!capabilities.steer || !capabilities.resume)) {
+		return lines([
+			...head(event.type === "active_long_running" ? "Subagent active but long-running" : "Subagent needs attention"),
+			event.recentFailureSummary ? `Recent failures: ${event.recentFailureSummary}` : undefined,
+			"This external runner is one-shot: it cannot be steered or resumed. Inspect its status and output; stop it if needed, then launch a new run with a complete brief.",
+			status,
+			`Stop: subagent({ action: "stop", id: "${runTarget}" })`,
+		]);
+	}
 	if (event.type === "active_long_running") {
 		return lines([
 			...head("Subagent active but long-running"),
