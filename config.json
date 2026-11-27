@@ -3,6 +3,6 @@
   "waitTool": {
     "enabled": true
   },
-  "timeoutMs": 3600000,
+  "timeoutMs": 7200000,
   "checkpointBeforeDeadlineMs": 180000
 }
